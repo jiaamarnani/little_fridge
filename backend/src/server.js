@@ -35,7 +35,7 @@ app.get('/health', (req, res) => {
 });
 
 // Start server (for both local and Railway)
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Auth: http://localhost:${PORT}/api/auth`);
   console.log(`Foods: http://localhost:${PORT}/api/foods`);
