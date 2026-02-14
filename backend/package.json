@@ -12,11 +12,16 @@
     "prisma:generate": "prisma generate",
     "prisma:studio": "prisma studio"
   },
-  "keywords": ["express", "prisma", "api", "grocery"],
+  "keywords": [
+    "express",
+    "prisma",
+    "api",
+    "grocery"
+  ],
   "author": "Vanessa Fobid",
   "license": "MIT",
   "dependencies": {
-    "@prisma/client": "6.19.0",
+    "@prisma/client": "^6.19.0",
     "@supabase/supabase-js": "^2.39.0",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
@@ -24,6 +29,6 @@
   },
   "devDependencies": {
     "nodemon": "^3.1.11",
-    "prisma": "6.19.0"
+    "prisma": "^6.19.0"
   }
 }

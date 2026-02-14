@@ -30,16 +30,26 @@ app.get('/', (req, res) => {
   });
 });
 
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
+app.get('/health', async (req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ status: 'ok', database: 'connected' });
+  } catch (error) {
+    console.error('Health check error:', error);
+    res.status(500).json({ 
+      status: 'error', 
+      database: 'disconnected',
+      message: error.message 
+    });
+  }
 });
 
-// Add '0.0.0.0' here!
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
-  console.log(`Auth: http://localhost:${PORT}/api/auth`);
-  console.log(`Foods: http://localhost:${PORT}/api/foods`);
-  console.log(`Fridge: http://localhost:${PORT}/api/fridge`);
+  console.log('Environment check:');
+  console.log('DATABASE_URL:', process.env.DATABASE_URL ? 'Set' : 'MISSING');
+  console.log('SUPABASE_URL:', process.env.SUPABASE_URL ? 'Set' : 'MISSING');
+  console.log('SUPABASE_ANON_KEY:', process.env.SUPABASE_ANON_KEY ? 'Set' : 'MISSING');
 });
 
 process.on('SIGINT', async () => {
