@@ -9,6 +9,7 @@ const fridgeRouter = require('./routes/fridge');
 
 const app = express();
 const prisma = new PrismaClient();
+const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
@@ -20,7 +21,12 @@ app.use('/api/fridge', fridgeRouter);
 app.get('/', (req, res) => {
   res.json({
     message: 'Little Fridge API',
-    version: '1.0.0'
+    version: '1.0.0',
+    endpoints: {
+      auth: '/api/auth',
+      foods: '/api/foods',
+      fridge: '/api/fridge'
+    }
   });
 });
 
@@ -28,13 +34,19 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// For local development
-if (process.env.NODE_ENV !== 'production') {
-  const PORT = process.env.PORT || 3000;
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
-}
+// Start server (for both local and Railway)
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on port ${PORT}`);
+  console.log(`Auth: http://localhost:${PORT}/api/auth`);
+  console.log(`Foods: http://localhost:${PORT}/api/foods`);
+  console.log(`Fridge: http://localhost:${PORT}/api/fridge`);
+});
 
-// For Vercel (export the app)
+// Graceful shutdown
+process.on('SIGINT', async () => {
+  console.log('\nShutting down gracefully...');
+  await prisma.$disconnect();
+  process.exit(0);
+});
+
 module.exports = app;
