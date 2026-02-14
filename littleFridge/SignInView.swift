@@ -4,8 +4,11 @@ struct SignInView: View {
     @State private var username: String = ""
     @State private var password: String = ""
     @State private var showGroupSelection = false  // Add this
+    @State private var isPasswordVisible: Bool = false
+
     
     var body: some View {
+    
         ZStack {
             // White background
             Color(red: 1, green: 1, blue: 1)
@@ -35,8 +38,8 @@ struct SignInView: View {
                             .font(.system(size: 20, weight: .bold, design: .rounded))
                             .foregroundColor(.black)
                         
-                        TextField("johndoe@gmail.com", text: $username)
-                            .foregroundColor(.black)
+                        TextField("", text: $username, prompt: Text("hackbeanpot＠gmail.com").foregroundColor(.gray))
+                            .tint(.gray)
                             .textFieldStyle(PlainTextFieldStyle())
                             .padding()
                             .background(Color(red: 0.95, green: 0.95, blue: 0.95))
@@ -51,13 +54,28 @@ struct SignInView: View {
                             .font(.system(size: 20, weight: .bold, design: .rounded))
                             .foregroundColor(.black)
                         
-                        SecureField("**********", text: $password)
-                            .textFieldStyle(PlainTextFieldStyle())
-                            .padding()
-                            .background(Color(red: 0.95, green: 0.95, blue: 0.95))
-                            .cornerRadius(12)
-                            .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
-                            .frame(maxWidth: 350)
+                        HStack {
+                            if isPasswordVisible {
+                                TextField("**********", text: $password)
+                                    .foregroundColor(.black)
+                                    .textFieldStyle(PlainTextFieldStyle())
+                            } else {
+                                SecureField("**********", text: $password)
+                                    .textFieldStyle(PlainTextFieldStyle())
+                            }
+                            
+                            Button(action: {
+                                isPasswordVisible.toggle()
+                            }) {
+                                Image(systemName: isPasswordVisible ? "eye.slash.fill" : "eye.fill")
+                                    .foregroundColor(.gray)
+                            }
+                        }
+                        .padding()
+                        .background(Color(red: 0.95, green: 0.95, blue: 0.95))
+                        .cornerRadius(12)
+                        .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
+                        .frame(maxWidth: 350)
                         
                         // Forgot Password
                         Button(action: {
@@ -100,7 +118,8 @@ struct SignInView: View {
                 Spacer()
             }
         }
-        .fullScreenCover(isPresented: $showGroupSelection) {  // Add this
+    
+        .fullScreenCover(isPresented: $showGroupSelection) {
             GroupSelectionView()
         }
     }
