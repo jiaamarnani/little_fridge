@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct SignInView: View {
+
     @State private var username: String = ""
     @State private var password: String = ""
     @State private var showGroupSelection = false
@@ -22,6 +23,11 @@ struct SignInView: View {
     }
     
     var body: some View {
+        
+        Text("TEST")
+            .font(.largeTitle)
+            .foregroundColor(.red)
+        
         ZStack {
             Color.white
                 .ignoresSafeArea()

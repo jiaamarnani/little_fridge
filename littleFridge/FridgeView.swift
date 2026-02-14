@@ -1,413 +1,663 @@
 import SwiftUI
 
+// MARK: - Food Category
 enum FoodCategory: String, CaseIterable {
-    case veggies = "VEGGIES"
-    case fruits = "FRUITS"
-    case dairy = "DAIRY"
-    case carbs = "CARBS"
-    case condiments = "CONDIMENTS"
-    case protein = "PROTEIN"
-    case drinks = "DRINKS"
-    case extras = "EXTRAS"
+    case veggies = "Veggies"
+    case fruits = "Fruits"
+    case dairy = "Dairy"
+    case carbs = "Carbs"
+    case condiments = "Condiments"
+    case protein = "Protein"
+    case drinks = "Drinks"
+    case extras = "Extras"
+    
+    var emoji: String {
+        switch self {
+        case .veggies: return "🥗"
+        case .fruits: return "🍌"
+        case .dairy: return "🥛"
+        case .carbs: return "🍞"
+        case .condiments: return "🍯"
+        case .protein: return "🥩"
+        case .drinks: return "🧃"
+        case .extras: return "❓"
+        }
+    }
+}
+
+// MARK: - Models (matches Prisma/Supabase schema)
+struct FoodDetail: Codable {
+    let foodName: String
+    let foodCategory: String
+    let defaultExpiryDays: Int?
+    
+    enum CodingKeys: String, CodingKey {
+        case foodName = "food_name"
+        case foodCategory = "food_category"
+        case defaultExpiryDays = "default_expiry_days"
+    }
+}
+
+struct FridgeItem: Identifiable, Codable {
+    let id: String
+    let fridgeId: String
+    let foodName: String
+    let quantity: Int
+    let addedByUserId: String?
+    let addedAt: String
+    let expiresAt: String?
+    let foods: FoodDetail?
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case fridgeId = "fridge_id"
+        case foodName = "food_name"
+        case quantity
+        case addedByUserId = "added_by_user_id"
+        case addedAt = "added_at"
+        case expiresAt = "expires_at"
+        case foods
+    }
+    
+    /// Calculates "X days" until expiry from expiresAt date
+    var expiresInText: String {
+        guard let expiresAt = expiresAt,
+              let date = ISO8601DateFormatter().date(from: expiresAt) else {
+            return "No expiry"
+        }
+        let days = Calendar.current.dateComponents([.day], from: Date(), to: date).day ?? 0
+        if days < 0 { return "Expired" }
+        if days == 0 { return "Today" }
+        if days == 1 { return "1 day" }
+        return "\(days) days"
+    }
+    
+    /// Days until expiry as Int for freshness color
+    var daysUntilExpiry: Int? {
+        guard let expiresAt = expiresAt,
+              let date = ISO8601DateFormatter().date(from: expiresAt) else { return nil }
+        return Calendar.current.dateComponents([.day], from: Date(), to: date).day
+    }
+}
+
+// MARK: - API Service
+class FridgeAPI {
+    static let shared = FridgeAPI()
+    
+    // TODO: Replace with your actual backend URL
+    private let baseURL = "https://your-backend-url.com/api"
+    
+    // TODO: Set this after user logs in / joins a group
+    var currentFridgeId: String = ""
+    
+    /// GET /:fridgeId/category/:category
+    func fetchItems(for category: FoodCategory) async throws -> [FridgeItem] {
+        let categoryParam = category.rawValue.lowercased()
+        let url = URL(string: "\(baseURL)/fridge/\(currentFridgeId)/category/\(categoryParam)")!
+        let (data, _) = try await URLSession.shared.data(from: url)
+        let decoder = JSONDecoder()
+        return try decoder.decode([FridgeItem].self, from: data)
+    }
+    
+    /// GET /:fridgeId/items (all items)
+    func fetchAllItems() async throws -> [FridgeItem] {
+        let url = URL(string: "\(baseURL)/fridge/\(currentFridgeId)/items")!
+        let (data, _) = try await URLSession.shared.data(from: url)
+        return try JSONDecoder().decode([FridgeItem].self, from: data)
+    }
+    
+    /// DELETE /fridge/items/:itemId
+    func deleteItem(id: String) async throws {
+        let url = URL(string: "\(baseURL)/fridge/items/\(id)")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        let (_, _) = try await URLSession.shared.data(for: request)
+    }
+    
+    /// POST /:fridgeId/items
+    func addItem(foodName: String, quantity: Int, expiresAt: String) async throws {
+        let url = URL(string: "\(baseURL)/fridge/\(currentFridgeId)/items")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let body: [String: Any] = [
+            "foodName": foodName,
+            "quantity": quantity,
+            "expiresAt": expiresAt
+            // TODO: "addedByUserId": currentUserId — set after auth
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (_, _) = try await URLSession.shared.data(for: request)
+    }
 }
 
 // MARK: - Main View
 struct ViewFridgeView: View {
+    @Environment(\.dismiss) private var dismiss
+    
+    // Fridge door animation
     @State private var doorOpen = false
+    @State private var fridgeScale: CGFloat = 1.0
+    @State private var fridgeOpacity: Double = 1.0
+    @State private var whiteFlash: Double = 0.0
+    @State private var showFridge = true
+    
+    // Grid
+    @State private var showGrid = false
+    @State private var headerVisible = false
+    @State private var gridVisible: [Bool] = Array(repeating: false, count: 8)
+    @State private var animateBlobs = false
+    
+    // Sheet
     @State private var selectedCategory: FoodCategory? = nil
     @State private var showIngredients = false
     
+    private let coral = Color(red: 0.94, green: 0.44, blue: 0.44)
+    private let green = Color(red: 0.71, green: 0.79, blue: 0.58)
+    private let pinkBg = Color(red: 1.0, green: 0.93, blue: 0.93)
+    
+    private let columns = [
+        GridItem(.flexible(), spacing: 14),
+        GridItem(.flexible(), spacing: 14)
+    ]
+    
     var body: some View {
         ZStack {
-            // Pink background
-            Color(red: 1.0, green: 0.9, blue: 0.9)
-                .ignoresSafeArea()
+            pinkBg.ignoresSafeArea()
             
-            // Fridge container
+            // Background blobs
             ZStack {
-                // Shadow behind fridge
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Color.black.opacity(0.3))
-                    .frame(width: 310, height: 520)
-                    .offset(x: 8, y: 8)
-                
-                // Fridge body (black interior)
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(Color(red: 0.1, green: 0.1, blue: 0.1))
-                    .frame(width: 300, height: 500)
-                
-                // Fridge interior with shelves
-                FridgeInterior(
-                    selectedCategory: $selectedCategory,
-                    showIngredients: $showIngredients
-                )
-                
-                // Fridge door
-                FridgeDoorLarge(isOpen: doorOpen)
-                    .zIndex(10)
+                Circle()
+                    .fill(RadialGradient(colors: [coral.opacity(0.12), .clear], center: .center, startRadius: 20, endRadius: 160))
+                    .frame(width: 320, height: 320)
+                    .offset(x: 130, y: animateBlobs ? -300 : -340)
+                    .blur(radius: 20)
+                Circle()
+                    .fill(RadialGradient(colors: [green.opacity(0.15), .clear], center: .center, startRadius: 30, endRadius: 180))
+                    .frame(width: 360, height: 360)
+                    .offset(x: -110, y: animateBlobs ? 320 : 360)
+                    .blur(radius: 25)
             }
-            .offset(x: 20)
+            .ignoresSafeArea()
+            .opacity(showGrid ? 1 : 0)
             
-            // Bottom drawer
-            VStack {
-                Spacer()
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color(red: 0.75, green: 0.75, blue: 0.75))
-                    .frame(width: 260, height: 50)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(Color(red: 0.65, green: 0.65, blue: 0.65))
-                            .frame(width: 80, height: 12)
-                    )
-                    .offset(x: 20, y: -58)
+            // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            // MARK: - Fridge Layer
+            // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            if showFridge {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 22)
+                        .fill(Color.black.opacity(0.12))
+                        .frame(width: 260, height: 400)
+                        .offset(x: 5, y: 8)
+                        .blur(radius: 10)
+                    
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(Color(red: 0.10, green: 0.10, blue: 0.12))
+                        .frame(width: 250, height: 380)
+                    
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color(red: 0.94, green: 0.93, blue: 0.91), Color(red: 0.88, green: 0.87, blue: 0.85)],
+                                startPoint: .top, endPoint: .bottom
+                            )
+                        )
+                        .frame(width: 230, height: 358)
+                    
+                    // Interior glow
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(
+                            RadialGradient(
+                                colors: [Color.white.opacity(doorOpen ? 0.3 : 0), .clear],
+                                center: .top, startRadius: 10, endRadius: 250
+                            )
+                        )
+                        .frame(width: 230, height: 358)
+                    
+                    // Mini category hints inside fridge
+                    VStack(spacing: 0) {
+                        miniShelfRow([.veggies, .fruits, .dairy])
+                        miniShelfLine()
+                        miniShelfRow([.carbs, .condiments, .protein])
+                        miniShelfLine()
+                        miniShelfRow([.drinks, .extras])
+                    }
+                    .frame(width: 220, height: 340)
+                    .opacity(doorOpen ? 1 : 0)
+                    .animation(.easeOut(duration: 0.4).delay(0.6), value: doorOpen)
+                    
+                    // Door
+                    ViewFridgeDoor(isOpen: doorOpen)
+                        .zIndex(10)
+                }
+                .scaleEffect(fridgeScale)
+                .opacity(fridgeOpacity)
             }
             
-            // Ingredients bottom sheet
+            // White flash
+            Color.white
+                .ignoresSafeArea()
+                .opacity(whiteFlash)
+                .zIndex(15)
+            
+            // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            // MARK: - Grid Layer
+            // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            if showGrid {
+                VStack(spacing: 0) {
+                    // Nav bar
+                    HStack {
+                        Button { dismiss() } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "chevron.left")
+                                    .font(.system(size: 16, weight: .semibold))
+                                Text("Back")
+                                    .font(.system(size: 17, weight: .regular, design: .rounded))
+                            }
+                            .foregroundColor(coral)
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                    .padding(.bottom, 4)
+                    .opacity(headerVisible ? 1 : 0)
+                    
+                    ScrollView(showsIndicators: false) {
+                        VStack(spacing: 0) {
+                            VStack(spacing: 6) {
+                                Text("Your Fridge")
+                                    .font(.system(size: 34, weight: .heavy, design: .rounded))
+                                    .foregroundColor(Color(red: 0.2, green: 0.2, blue: 0.2))
+                                
+                                Text("Tap a category to see what's inside")
+                                    .font(.system(size: 15, weight: .regular, design: .rounded))
+                                    .foregroundColor(Color(.secondaryLabel))
+                            }
+                            .opacity(headerVisible ? 1 : 0)
+                            .offset(y: headerVisible ? 0 : 12)
+                            .padding(.top, 8)
+                            .padding(.bottom, 28)
+                            
+                            LazyVGrid(columns: columns, spacing: 14) {
+                                ForEach(Array(FoodCategory.allCases.enumerated()), id: \.element) { index, category in
+                                    CategoryCard(category: category, isVisible: gridVisible.indices.contains(index) ? gridVisible[index] : false) {
+                                        selectedCategory = category
+                                        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                                            showIngredients = true
+                                        }
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.bottom, 40)
+                        }
+                    }
+                }
+            }
+            
+            // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            // MARK: - Ingredient Sheet
+            // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             if showIngredients, let category = selectedCategory {
-                IngredientSheet(
+                Color.black.opacity(0.3)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                            showIngredients = false
+                        }
+                    }
+                    .transition(.opacity)
+                    .zIndex(25)
+                
+                IngredientSheetView(
                     category: category,
-                    isPresented: $showIngredients
+                    isPresented: $showIngredients,
+                    coral: coral
                 )
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .zIndex(30)
             }
         }
+        // MARK: - Animation Sequence
         .onAppear {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                withAnimation(.spring(response: 1.2, dampingFraction: 0.7)) {
+            withAnimation(.easeInOut(duration: 4.0).repeatForever(autoreverses: true)) {
+                animateBlobs = true
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                withAnimation(.spring(response: 0.8, dampingFraction: 0.7)) {
                     doorOpen = true
                 }
             }
-        }
-    }
-}
-
-// MARK: - Fridge Interior
-struct FridgeInterior: View {
-    @Binding var selectedCategory: FoodCategory?
-    @Binding var showIngredients: Bool
-    
-    var body: some View {
-        VStack(spacing: 0) {
-            // Top shelf
-            ShelfRow(
-                categories: [.veggies, .fruits, .dairy],
-                selectedCategory: $selectedCategory,
-                showIngredients: $showIngredients
-            )
-            
-            ShelfDivider()
-            
-            // Middle shelf
-            ShelfRow(
-                categories: [.carbs, .condiments, .protein],
-                selectedCategory: $selectedCategory,
-                showIngredients: $showIngredients
-            )
-            
-            ShelfDivider()
-            
-            // Bottom shelf
-            ShelfRow(
-                categories: [.drinks, .extras],
-                selectedCategory: $selectedCategory,
-                showIngredients: $showIngredients
-            )
-        }
-        .frame(width: 270, height: 420)
-        .background(Color(red: 0.92, green: 0.90, blue: 0.90))
-        .cornerRadius(8)
-    }
-}
-
-struct ShelfRow: View {
-    let categories: [FoodCategory]
-    @Binding var selectedCategory: FoodCategory?
-    @Binding var showIngredients: Bool
-    
-    var body: some View {
-        HStack(spacing: categories.count == 2 ? 40 : 20) {
-            ForEach(categories, id: \.self) { category in
-                CategoryButton(category: category) {
-                    selectedCategory = category
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                        showIngredients = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+                withAnimation(.easeIn(duration: 0.4)) {
+                    fridgeScale = 4.0
+                    fridgeOpacity = 0.0
+                }
+                withAnimation(.easeIn(duration: 0.25).delay(0.15)) {
+                    whiteFlash = 1.0
+                }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.3) {
+                showFridge = false
+                showGrid = true
+                withAnimation(.easeOut(duration: 0.3)) {
+                    whiteFlash = 0.0
+                }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+                withAnimation(.easeOut(duration: 0.3)) {
+                    headerVisible = true
+                }
+            }
+            for i in 0..<8 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5 + Double(i) * 0.06) {
+                    withAnimation(.spring(response: 0.45, dampingFraction: 0.75)) {
+                        if gridVisible.indices.contains(i) {
+                            gridVisible[i] = true
+                        }
                     }
                 }
             }
         }
-        .frame(maxWidth: .infinity)
-        .frame(height: 130)
     }
-}
-
-struct ShelfDivider: View {
-    var body: some View {
+    
+    // Mini shelf items inside fridge
+    private func miniShelfRow(_ categories: [FoodCategory]) -> some View {
+        HStack(spacing: categories.count == 2 ? 20 : 10) {
+            ForEach(categories, id: \.self) { cat in
+                VStack(spacing: 2) {
+                    Text(cat.emoji).font(.system(size: 22))
+                    Text(cat.rawValue.uppercased())
+                        .font(.system(size: 7, weight: .bold, design: .rounded))
+                        .foregroundColor(Color(red: 0.4, green: 0.4, blue: 0.4))
+                }
+                .frame(width: 60, height: 50)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.5)))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+    
+    private func miniShelfLine() -> some View {
         Rectangle()
-            .fill(Color.black)
-            .frame(height: 4)
-            .padding(.horizontal, 5)
+            .fill(LinearGradient(colors: [Color(red: 0.75, green: 0.75, blue: 0.73), Color(red: 0.68, green: 0.68, blue: 0.66)], startPoint: .top, endPoint: .bottom))
+            .frame(height: 5)
+            .padding(.horizontal, 6)
     }
 }
 
-// MARK: - Category Button
-struct CategoryButton: View {
+// MARK: - Category Card
+struct CategoryCard: View {
     let category: FoodCategory
+    let isVisible: Bool
     let action: () -> Void
+    @State private var isPressed = false
     
     var body: some View {
-        Button(action: action) {
+        Button {
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.5)) { isPressed = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.5)) { isPressed = false }
+                action()
+            }
+        } label: {
             VStack(spacing: 8) {
-                CategoryIcon(category: category)
-                    .frame(width: 50, height: 50)
-                
+                Text(category.emoji).font(.system(size: 40))
                 Text(category.rawValue)
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .foregroundColor(.black)
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .foregroundColor(.primary)
             }
+            .frame(maxWidth: .infinity)
+            .frame(height: 120)
+            .background(
+                RoundedRectangle(cornerRadius: 18)
+                    .fill(.ultraThinMaterial)
+                    .background(RoundedRectangle(cornerRadius: 18).fill(Color.white.opacity(0.6)))
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 18))
+            .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 3)
+            .scaleEffect(isPressed ? 0.94 : 1.0)
         }
+        .opacity(isVisible ? 1 : 0)
+        .offset(y: isVisible ? 0 : 20)
     }
 }
 
-// MARK: - Category Icons
-struct CategoryIcon: View {
-    let category: FoodCategory
-    
-    var body: some View {
-        Group {
-            switch category {
-            case .veggies:
-                Text("🥗")
-                    .font(.system(size: 40))
-            case .fruits:
-                Text("🍌")
-                    .font(.system(size: 40))
-            case .dairy:
-                Text("🥛")
-                    .font(.system(size: 40))
-            case .carbs:
-                Text("🍞")
-                    .font(.system(size: 40))
-            case .condiments:
-                Text("🍯")
-                    .font(.system(size: 40))
-            case .protein:
-                Text("🥩")
-                    .font(.system(size: 40))
-            case .drinks:
-                Text("🧃")
-                    .font(.system(size: 40))
-            case .extras:
-                Text("❓")
-                    .font(.system(size: 40))
-            }
-        }
-    }
-}
-
-// MARK: - Custom Icons
-struct SaladBowlIcon: View {
-    var body: some View {
-        ZStack {
-            // Bowl
-            Ellipse()
-                .stroke(Color.black, lineWidth: 2.5)
-                .frame(width: 45, height: 25)
-                .offset(y: 10)
-            
-            // Veggies sticking out
-            Path { path in
-                path.move(to: CGPoint(x: 15, y: 15))
-                path.addQuadCurve(to: CGPoint(x: 20, y: 5), control: CGPoint(x: 12, y: 8))
-                path.move(to: CGPoint(x: 25, y: 12))
-                path.addLine(to: CGPoint(x: 25, y: 2))
-                path.move(to: CGPoint(x: 35, y: 15))
-                path.addQuadCurve(to: CGPoint(x: 32, y: 5), control: CGPoint(x: 38, y: 8))
-            }
-            .stroke(Color.black, lineWidth: 2.5)
-        }
-    }
-}
-
-struct BananaIcon: View {
-    var body: some View {
-        Path { path in
-            path.move(to: CGPoint(x: 25, y: 5))
-            path.addQuadCurve(to: CGPoint(x: 10, y: 40), control: CGPoint(x: 5, y: 20))
-            path.addQuadCurve(to: CGPoint(x: 25, y: 10), control: CGPoint(x: 20, y: 35))
-        }
-        .stroke(Color.black, lineWidth: 2.5)
-    }
-}
-
-struct MilkCartonIcon: View {
-    var body: some View {
-        ZStack {
-            // Carton body
-            Path { path in
-                path.move(to: CGPoint(x: 12, y: 15))
-                path.addLine(to: CGPoint(x: 12, y: 45))
-                path.addLine(to: CGPoint(x: 38, y: 45))
-                path.addLine(to: CGPoint(x: 38, y: 15))
-                // Roof
-                path.addLine(to: CGPoint(x: 25, y: 5))
-                path.addLine(to: CGPoint(x: 12, y: 15))
-            }
-            .stroke(Color.black, lineWidth: 2.5)
-        }
-    }
-}
-
-struct BreadIcon: View {
-    var body: some View {
-        ZStack {
-            // Bread loaf shape
-            Path { path in
-                path.move(to: CGPoint(x: 10, y: 35))
-                path.addLine(to: CGPoint(x: 10, y: 20))
-                path.addQuadCurve(to: CGPoint(x: 25, y: 10), control: CGPoint(x: 10, y: 10))
-                path.addQuadCurve(to: CGPoint(x: 40, y: 20), control: CGPoint(x: 40, y: 10))
-                path.addLine(to: CGPoint(x: 40, y: 35))
-                path.addLine(to: CGPoint(x: 10, y: 35))
-            }
-            .stroke(Color.black, lineWidth: 2.5)
-        }
-    }
-}
-
-struct KetchupIcon: View {
-    var body: some View {
-        ZStack {
-            // Bottle
-            Path { path in
-                // Body
-                path.move(to: CGPoint(x: 15, y: 45))
-                path.addLine(to: CGPoint(x: 15, y: 20))
-                path.addLine(to: CGPoint(x: 20, y: 15))
-                path.addLine(to: CGPoint(x: 20, y: 8))
-                path.addLine(to: CGPoint(x: 30, y: 8))
-                path.addLine(to: CGPoint(x: 30, y: 15))
-                path.addLine(to: CGPoint(x: 35, y: 20))
-                path.addLine(to: CGPoint(x: 35, y: 45))
-                path.addLine(to: CGPoint(x: 15, y: 45))
-            }
-            .stroke(Color.black, lineWidth: 2.5)
-            
-            // Cap
-            Rectangle()
-                .stroke(Color.black, lineWidth: 2.5)
-                .frame(width: 14, height: 6)
-                .offset(y: -20)
-        }
-    }
-}
-
-struct SteakIcon: View {
-    var body: some View {
-        ZStack {
-            // Steak shape
-            Ellipse()
-                .stroke(Color.black, lineWidth: 2.5)
-                .frame(width: 40, height: 30)
-            
-            // Fat marbling
-            Path { path in
-                path.move(to: CGPoint(x: 18, y: 22))
-                path.addQuadCurve(to: CGPoint(x: 32, y: 22), control: CGPoint(x: 25, y: 28))
-            }
-            .stroke(Color.black, lineWidth: 2)
-        }
-    }
-}
-
-struct WaterBottleIcon: View {
-    var body: some View {
-        Path { path in
-            // Bottle body with curves
-            path.move(to: CGPoint(x: 18, y: 45))
-            path.addLine(to: CGPoint(x: 18, y: 35))
-            path.addQuadCurve(to: CGPoint(x: 15, y: 25), control: CGPoint(x: 15, y: 30))
-            path.addQuadCurve(to: CGPoint(x: 18, y: 15), control: CGPoint(x: 15, y: 20))
-            path.addLine(to: CGPoint(x: 20, y: 12))
-            path.addLine(to: CGPoint(x: 20, y: 8))
-            path.addLine(to: CGPoint(x: 30, y: 8))
-            path.addLine(to: CGPoint(x: 30, y: 12))
-            path.addLine(to: CGPoint(x: 32, y: 15))
-            path.addQuadCurve(to: CGPoint(x: 35, y: 25), control: CGPoint(x: 35, y: 20))
-            path.addQuadCurve(to: CGPoint(x: 32, y: 35), control: CGPoint(x: 35, y: 30))
-            path.addLine(to: CGPoint(x: 32, y: 45))
-            path.addLine(to: CGPoint(x: 18, y: 45))
-        }
-        .stroke(Color.black, lineWidth: 2.5)
-    }
-}
-
-struct QuestionMarkIcon: View {
-    var body: some View {
-        Text("?")
-            .font(.system(size: 40, weight: .bold, design: .rounded))
-            .foregroundColor(.black)
-    }
-}
-
-// MARK: - Ingredient Sheet
-struct IngredientSheet: View {
+// MARK: - Ingredient Sheet (fetches from backend)
+struct IngredientSheetView: View {
     let category: FoodCategory
     @Binding var isPresented: Bool
+    let coral: Color
+    
+    @State private var items: [FridgeItem] = []
+    @State private var isLoading = true
+    @State private var errorMessage: String? = nil
     
     var body: some View {
         VStack {
             Spacer()
             
             VStack(spacing: 0) {
-                // Header with X button
+                // Handle
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(Color(.systemGray4))
+                    .frame(width: 40, height: 5)
+                    .padding(.top, 12)
+                    .padding(.bottom, 16)
+                
+                // Header
                 HStack {
+                    Text("\(category.emoji) \(category.rawValue)")
+                        .font(.system(size: 26, weight: .heavy, design: .rounded))
+                        .foregroundColor(Color(red: 0.2, green: 0.2, blue: 0.2))
+                    
                     Spacer()
                     
-                    Button(action: {
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                    Button {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                             isPresented = false
                         }
-                    }) {
+                    } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundColor(.black)
-                            .padding(12)
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(Color(.secondaryLabel))
+                            .frame(width: 32, height: 32)
+                            .background(Color(.systemGray6))
+                            .clipShape(Circle())
                     }
                 }
-                .padding(.top, 8)
-                .padding(.trailing, 8)
-                
-                // Category title - centered, underlined, cute font
-                VStack(spacing: 4) {
-                    Text(category.rawValue)
-                        .font(.system(size: 32, weight: .bold, design: .rounded))
-                        .foregroundColor(Color(red: 0.96, green: 0.44, blue: 0.44))
-                    
-                    Rectangle()
-                        .fill(Color(red: 0.96, green: 0.44, blue: 0.44))
-                        .frame(width: 120, height: 3)
-                }
-                .padding(.top, -10)
+                .padding(.horizontal, 24)
                 .padding(.bottom, 20)
                 
-                // Scrollable content area for future ingredients
-                ScrollView {
-                    VStack(spacing: 12) {
-                        // Ingredients will go here
-                    }
+                Rectangle()
+                    .fill(Color(.separator))
+                    .frame(height: 0.5)
                     .padding(.horizontal, 24)
-                    .padding(.bottom, 30)
-                }
                 
-                Spacer()
+                // Content
+                if isLoading {
+                    Spacer()
+                    ProgressView()
+                        .tint(coral)
+                    Spacer()
+                } else if let error = errorMessage {
+                    Spacer()
+                    VStack(spacing: 8) {
+                        Image(systemName: "wifi.slash")
+                            .font(.system(size: 28))
+                            .foregroundColor(Color(.tertiaryLabel))
+                        Text(error)
+                            .font(.system(size: 15, weight: .medium, design: .rounded))
+                            .foregroundColor(Color(.secondaryLabel))
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(.horizontal, 40)
+                    Spacer()
+                } else if items.isEmpty {
+                    Spacer()
+                    VStack(spacing: 8) {
+                        Text("Nothing here yet")
+                            .font(.system(size: 17, weight: .semibold, design: .rounded))
+                            .foregroundColor(Color(.secondaryLabel))
+                        Text("Add items to your fridge to see them here")
+                            .font(.system(size: 14, weight: .regular, design: .rounded))
+                            .foregroundColor(Color(.tertiaryLabel))
+                    }
+                    Spacer()
+                } else {
+                    ScrollView(showsIndicators: false) {
+                        VStack(spacing: 0) {
+                            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                                HStack(spacing: 14) {
+                                    Circle()
+                                        .fill(freshnessColor(item: item))
+                                        .frame(width: 10, height: 10)
+                                    
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(item.foodName)
+                                            .font(.system(size: 17, weight: .semibold, design: .rounded))
+                                            .foregroundColor(.primary)
+                                        Text(item.expiresInText)
+                                            .font(.system(size: 13, weight: .regular, design: .rounded))
+                                            .foregroundColor(Color(.secondaryLabel))
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    Text("×\(item.quantity)")
+                                        .font(.system(size: 15, weight: .medium, design: .rounded))
+                                        .foregroundColor(Color(.tertiaryLabel))
+                                }
+                                .padding(.horizontal, 24)
+                                .padding(.vertical, 14)
+                                
+                                if index < items.count - 1 {
+                                    Rectangle()
+                                        .fill(Color(.separator).opacity(0.5))
+                                        .frame(height: 0.5)
+                                        .padding(.leading, 48)
+                                        .padding(.trailing, 24)
+                                }
+                            }
+                        }
+                        .padding(.top, 8)
+                        .padding(.bottom, 40)
+                    }
+                }
             }
             .frame(maxWidth: .infinity)
-            .frame(height: UIScreen.main.bounds.height * 0.85)
-            .background(Color.white)
-            .cornerRadius(24, corners: [.topLeft, .topRight])
-            .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: -5)
+            .frame(height: UIScreen.main.bounds.height * 0.55)
+            .background(
+                RoundedRectangle(cornerRadius: 24)
+                    .fill(Color(.systemBackground))
+                    .shadow(color: Color.black.opacity(0.15), radius: 20, x: 0, y: -8)
+            )
         }
         .ignoresSafeArea()
-        .transition(.move(edge: .bottom))
+        .task {
+            await loadItems()
+        }
+    }
+    
+    // MARK: - Fetch from backend
+    private func loadItems() async {
+        isLoading = true
+        errorMessage = nil
+        
+        do {
+            items = try await FridgeAPI.shared.fetchItems(for: category)
+            isLoading = false
+        } catch {
+            errorMessage = "Couldn't load items.\nCheck your connection."
+            isLoading = false
+        }
+    }
+    
+    private func freshnessColor(item: FridgeItem) -> Color {
+        guard let days = item.daysUntilExpiry else { return Color(.systemGray4) }
+        if days < 0 { return Color(red: 0.70, green: 0.20, blue: 0.20) }  // Expired
+        if days <= 1 { return Color(red: 0.94, green: 0.35, blue: 0.35) }  // Red
+        if days <= 3 { return Color(red: 0.95, green: 0.70, blue: 0.30) }  // Orange
+        return Color(red: 0.55, green: 0.78, blue: 0.45)                    // Green
+    }
+}
+
+// MARK: - Fridge Door
+struct ViewFridgeDoor: View {
+    var isOpen: Bool
+    
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 20)
+                .fill(
+                    LinearGradient(
+                        colors: [Color(red: 0.86, green: 0.86, blue: 0.86), Color(red: 0.78, green: 0.78, blue: 0.78)],
+                        startPoint: .leading, endPoint: .trailing
+                    )
+                )
+                .frame(width: 250, height: 380)
+            
+            RoundedRectangle(cornerRadius: 14)
+                .fill(
+                    LinearGradient(
+                        colors: [Color(red: 0.82, green: 0.82, blue: 0.82), Color(red: 0.76, green: 0.76, blue: 0.76)],
+                        startPoint: .top, endPoint: .bottom
+                    )
+                )
+                .frame(width: 220, height: 350)
+            
+            Rectangle()
+                .fill(Color(red: 0.65, green: 0.65, blue: 0.65))
+                .frame(width: 220, height: 2)
+                .offset(y: -70)
+            
+            RoundedRectangle(cornerRadius: 20)
+                .stroke(Color(red: 0.3, green: 0.3, blue: 0.3), lineWidth: 3)
+                .frame(width: 250, height: 380)
+            
+            HStack {
+                VStack(spacing: 100) {
+                    DoorHandleView()
+                    DoorHandleView()
+                }
+                .offset(x: -104)
+                Spacer()
+            }
+        }
+        .compositingGroup()
+        .shadow(
+            color: Color.black.opacity(isOpen ? 0.2 : 0.08),
+            radius: isOpen ? 16 : 4, x: isOpen ? -10 : 0, y: 2
+        )
+        .rotation3DEffect(
+            .degrees(isOpen ? -105 : 0),
+            axis: (x: 0, y: 1, z: 0),
+            anchor: .leading,
+            perspective: 0.3
+        )
+    }
+}
+
+struct DoorHandleView: View {
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 4)
+                .fill(Color(red: 0.68, green: 0.68, blue: 0.68))
+                .frame(width: 24, height: 44)
+                .shadow(color: .black.opacity(0.15), radius: 2, x: 1, y: 1)
+            RoundedRectangle(cornerRadius: 3)
+                .fill(
+                    LinearGradient(
+                        colors: [Color(red: 0.58, green: 0.58, blue: 0.58), Color(red: 0.50, green: 0.50, blue: 0.50)],
+                        startPoint: .top, endPoint: .bottom
+                    )
+                )
+                .frame(width: 8, height: 40)
+                .offset(x: -12)
+        }
     }
 }
 
@@ -421,73 +671,8 @@ extension View {
 struct RoundedCorner: Shape {
     var radius: CGFloat = .infinity
     var corners: UIRectCorner = .allCorners
-
     func path(in rect: CGRect) -> Path {
-        let path = UIBezierPath(
-            roundedRect: rect,
-            byRoundingCorners: corners,
-            cornerRadii: CGSize(width: radius, height: radius)
-        )
-        return Path(path.cgPath)
-    }
-}
-
-// MARK: - Large Fridge Door
-struct FridgeDoorLarge: View {
-    var isOpen: Bool
-    
-    var body: some View {
-        ZStack {
-            // SOLID door base
-            RoundedRectangle(cornerRadius: 14)
-                .fill(Color(red: 0.82, green: 0.82, blue: 0.82))
-                .frame(width: 300, height: 440)
-            
-            // Door inner panel
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color(red: 0.78, green: 0.78, blue: 0.78))
-                .frame(width: 270, height: 410)
-            
-            // Door border
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(Color.black, lineWidth: 6)
-                .frame(width: 300, height: 440)
-            
-            // Handle
-            HStack {
-                VStack(spacing: 50) {
-                    HandlePieceLarge()
-                    HandlePieceLarge()
-                    HandlePieceLarge()
-                }
-                .offset(x: -125)
-                
-                Spacer()
-            }
-        }
-        .compositingGroup()
-        .rotation3DEffect(
-            .degrees(isOpen ? -105 : 0),
-            axis: (x: 0, y: 1, z: 0),
-            anchor: .leading,
-            perspective: 0.3
-        )
-    }
-}
-
-struct HandlePieceLarge: View {
-    var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 4)
-                .fill(Color(red: 0.70, green: 0.70, blue: 0.70))
-                .frame(width: 30, height: 50)
-                .shadow(color: .black.opacity(0.3), radius: 2, x: 2, y: 2)
-            
-            RoundedRectangle(cornerRadius: 3)
-                .fill(Color(red: 0.55, green: 0.55, blue: 0.55))
-                .frame(width: 10, height: 45)
-                .offset(x: -15)
-        }
+        Path(UIBezierPath(roundedRect: rect, byRoundingCorners: corners, cornerRadii: CGSize(width: radius, height: radius)).cgPath)
     }
 }
 
