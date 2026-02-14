@@ -5,7 +5,7 @@ const { PrismaClient } = require('@prisma/client');
 
 const authRouter = require('./routes/auth');
 const foodsRouter = require('./routes/foods');
-const fridgeRouter = require('./fridge');
+const fridgeRouter = require('./routes/fridge');
 
 const app = express();
 const prisma = new PrismaClient();
