@@ -5,11 +5,11 @@ const { PrismaClient } = require('@prisma/client');
 
 const authRouter = require('./routes/auth');
 const foodsRouter = require('./routes/foods');
-const fridgeRouter = require('./routes/fridge');
+const fridgeRouter = require('./fridge');
 
 const app = express();
 const prisma = new PrismaClient();
-const PORT = process.env.PORT || 8800;
+const PORT = process.env.PORT || 8080;
 
 app.use(cors());
 app.use(express.json());
