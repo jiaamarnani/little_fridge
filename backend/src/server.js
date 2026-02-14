@@ -34,15 +34,14 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// Start server (for both local and Railway)
-app.listen(PORT, () => {
+// Add '0.0.0.0' here!
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Auth: http://localhost:${PORT}/api/auth`);
   console.log(`Foods: http://localhost:${PORT}/api/foods`);
   console.log(`Fridge: http://localhost:${PORT}/api/fridge`);
 });
 
-// Graceful shutdown
 process.on('SIGINT', async () => {
   console.log('\nShutting down gracefully...');
   await prisma.$disconnect();
