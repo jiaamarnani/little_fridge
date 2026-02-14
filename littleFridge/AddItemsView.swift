@@ -1,11 +1,3 @@
-//
-//  AddItemsView.swift
-//  littleFridge
-//
-//  Created by Jia Amarnani on 2/14/26.
-//
-
-
 import SwiftUI
 
 struct AddItemsView: View {
@@ -21,7 +13,6 @@ struct AddItemsView: View {
     @State private var errorMessage: String? = nil
     @State private var isAddPressed = false
     
-    // Animation
     @State private var headerVisible = false
     @State private var formVisible = false
     @State private var buttonVisible = false
@@ -42,7 +33,7 @@ struct AddItemsView: View {
             pinkBg.ignoresSafeArea()
                 .onTapGesture { focusedField = nil }
             
-            // Blobs
+            // Background blobs
             ZStack {
                 Circle()
                     .fill(RadialGradient(colors: [coral.opacity(0.12), .clear], center: .center, startRadius: 20, endRadius: 160))
@@ -92,9 +83,9 @@ struct AddItemsView: View {
                         .padding(.top, 16)
                         .padding(.bottom, 32)
                         
-                        // Form
+                        // Form fields
                         VStack(spacing: 18) {
-                            // Food name
+                            // Item name field
                             VStack(alignment: .leading, spacing: 6) {
                                 Text("Item Name")
                                     .font(.system(size: 14, weight: .semibold, design: .rounded))
@@ -118,7 +109,7 @@ struct AddItemsView: View {
                                 .animation(.easeOut(duration: 0.2), value: focusedField)
                             }
                             
-                            // Quantity
+                            // Quantity field
                             VStack(alignment: .leading, spacing: 6) {
                                 Text("Quantity")
                                     .font(.system(size: 14, weight: .semibold, design: .rounded))
@@ -160,7 +151,10 @@ struct AddItemsView: View {
                                                 }
                                             } label: {
                                                 VStack(spacing: 4) {
-                                                    Text(cat.emoji).font(.system(size: 24))
+                                                    Image(cat.iconName)
+                                                        .resizable()
+                                                        .scaledToFit()
+                                                        .frame(width: 24, height: 24)
                                                     Text(cat.rawValue)
                                                         .font(.system(size: 11, weight: .semibold, design: .rounded))
                                                         .foregroundColor(selectedCategory == cat ? .white : .primary)
@@ -179,7 +173,7 @@ struct AddItemsView: View {
                                 }
                             }
                             
-                            // Expiry
+                            // Expiry picker
                             VStack(alignment: .leading, spacing: 6) {
                                 Text("Expires In")
                                     .font(.system(size: 14, weight: .semibold, design: .rounded))
@@ -212,7 +206,7 @@ struct AddItemsView: View {
                         .opacity(formVisible ? 1 : 0)
                         .offset(y: formVisible ? 0 : 20)
                         
-                        // Error
+                        // Error message
                         if let error = errorMessage {
                             Text(error)
                                 .font(.system(size: 14, weight: .medium, design: .rounded))
@@ -220,7 +214,7 @@ struct AddItemsView: View {
                                 .padding(.top, 12)
                         }
                         
-                        // Success
+                        // Success message
                         if showSuccess {
                             HStack(spacing: 8) {
                                 Image(systemName: "checkmark.circle.fill")
@@ -265,14 +259,22 @@ struct AddItemsView: View {
             }
         }
         .onAppear {
-            withAnimation(.easeInOut(duration: 4.0).repeatForever(autoreverses: true)) { animateBlobs = true }
-            withAnimation(.easeOut(duration: 0.4).delay(0.1)) { headerVisible = true }
-            withAnimation(.easeOut(duration: 0.5).delay(0.25)) { formVisible = true }
-            withAnimation(.easeOut(duration: 0.4).delay(0.45)) { buttonVisible = true }
+            withAnimation(.easeInOut(duration: 4.0).repeatForever(autoreverses: true)) {
+                animateBlobs = true
+            }
+            withAnimation(.easeOut(duration: 0.4).delay(0.1)) {
+                headerVisible = true
+            }
+            withAnimation(.easeOut(duration: 0.5).delay(0.25)) {
+                formVisible = true
+            }
+            withAnimation(.easeOut(duration: 0.4).delay(0.45)) {
+                buttonVisible = true
+            }
         }
     }
     
-    // MARK: - POST to backend
+    // MARK: - Add Item to Backend
     private func addItem() async {
         focusedField = nil
         isLoading = true
@@ -297,7 +299,7 @@ struct AddItemsView: View {
             quantity = "1"
             expiresIn = 7
             
-            // Hide success after 2s
+            // Hide success after 2 seconds
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                 withAnimation { showSuccess = false }
             }

@@ -11,16 +11,29 @@ enum FoodCategory: String, CaseIterable {
     case drinks = "Drinks"
     case extras = "Extras"
     
-    var emoji: String {
+    var iconName: String {
         switch self {
-        case .veggies: return "🥗"
-        case .fruits: return "🍌"
-        case .dairy: return "🥛"
-        case .carbs: return "🍞"
-        case .condiments: return "🍯"
-        case .protein: return "🥩"
-        case .drinks: return "🧃"
-        case .extras: return "❓"
+        case .veggies: return "icon-veggies"
+        case .fruits: return "icon-fruits"
+        case .dairy: return "icon-dairy"
+        case .carbs: return "icon-carbs"
+        case .condiments: return "icon-condiments"
+        case .protein: return "icon-protein"
+        case .drinks: return "icon-drinks"
+        case .extras: return "icon-extras"
+        }
+    }
+    
+    var iconSize: CGFloat {
+        switch self {
+        case .veggies: return 75
+        case .fruits: return 75
+        case .dairy: return 75
+        case .carbs: return 75
+        case .condiments: return 75
+        case .protein: return 75
+        case .drinks: return 75
+        case .extras: return 75
         }
     }
 }
@@ -59,7 +72,6 @@ struct FridgeItem: Identifiable, Codable {
         case foods
     }
     
-    /// Calculates "X days" until expiry from expiresAt date
     var expiresInText: String {
         guard let expiresAt = expiresAt,
               let date = ISO8601DateFormatter().date(from: expiresAt) else {
@@ -72,7 +84,6 @@ struct FridgeItem: Identifiable, Codable {
         return "\(days) days"
     }
     
-    /// Days until expiry as Int for freshness color
     var daysUntilExpiry: Int? {
         guard let expiresAt = expiresAt,
               let date = ISO8601DateFormatter().date(from: expiresAt) else { return nil }
@@ -84,29 +95,22 @@ struct FridgeItem: Identifiable, Codable {
 class FridgeAPI {
     static let shared = FridgeAPI()
     
-    // TODO: Replace with your actual backend URL
     private let baseURL = "https://your-backend-url.com/api"
-    
-    // TODO: Set this after user logs in / joins a group
     var currentFridgeId: String = ""
     
-    /// GET /:fridgeId/category/:category
     func fetchItems(for category: FoodCategory) async throws -> [FridgeItem] {
         let categoryParam = category.rawValue.lowercased()
         let url = URL(string: "\(baseURL)/fridge/\(currentFridgeId)/category/\(categoryParam)")!
         let (data, _) = try await URLSession.shared.data(from: url)
-        let decoder = JSONDecoder()
-        return try decoder.decode([FridgeItem].self, from: data)
+        return try JSONDecoder().decode([FridgeItem].self, from: data)
     }
     
-    /// GET /:fridgeId/items (all items)
     func fetchAllItems() async throws -> [FridgeItem] {
         let url = URL(string: "\(baseURL)/fridge/\(currentFridgeId)/items")!
         let (data, _) = try await URLSession.shared.data(from: url)
         return try JSONDecoder().decode([FridgeItem].self, from: data)
     }
     
-    /// DELETE /fridge/items/:itemId
     func deleteItem(id: String) async throws {
         let url = URL(string: "\(baseURL)/fridge/items/\(id)")!
         var request = URLRequest(url: url)
@@ -114,7 +118,6 @@ class FridgeAPI {
         let (_, _) = try await URLSession.shared.data(for: request)
     }
     
-    /// POST /:fridgeId/items
     func addItem(foodName: String, quantity: Int, expiresAt: String) async throws {
         let url = URL(string: "\(baseURL)/fridge/\(currentFridgeId)/items")!
         var request = URLRequest(url: url)
@@ -125,7 +128,6 @@ class FridgeAPI {
             "foodName": foodName,
             "quantity": quantity,
             "expiresAt": expiresAt
-            // TODO: "addedByUserId": currentUserId — set after auth
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (_, _) = try await URLSession.shared.data(for: request)
@@ -136,20 +138,17 @@ class FridgeAPI {
 struct ViewFridgeView: View {
     @Environment(\.dismiss) private var dismiss
     
-    // Fridge door animation
     @State private var doorOpen = false
     @State private var fridgeScale: CGFloat = 1.0
     @State private var fridgeOpacity: Double = 1.0
     @State private var whiteFlash: Double = 0.0
     @State private var showFridge = true
     
-    // Grid
     @State private var showGrid = false
     @State private var headerVisible = false
     @State private var gridVisible: [Bool] = Array(repeating: false, count: 8)
     @State private var animateBlobs = false
     
-    // Sheet
     @State private var selectedCategory: FoodCategory? = nil
     @State private var showIngredients = false
     
@@ -166,7 +165,6 @@ struct ViewFridgeView: View {
         ZStack {
             pinkBg.ignoresSafeArea()
             
-            // Background blobs
             ZStack {
                 Circle()
                     .fill(RadialGradient(colors: [coral.opacity(0.12), .clear], center: .center, startRadius: 20, endRadius: 160))
@@ -182,9 +180,7 @@ struct ViewFridgeView: View {
             .ignoresSafeArea()
             .opacity(showGrid ? 1 : 0)
             
-            // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             // MARK: - Fridge Layer
-            // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             if showFridge {
                 ZStack {
                     RoundedRectangle(cornerRadius: 22)
@@ -206,7 +202,6 @@ struct ViewFridgeView: View {
                         )
                         .frame(width: 230, height: 358)
                     
-                    // Interior glow
                     RoundedRectangle(cornerRadius: 14)
                         .fill(
                             RadialGradient(
@@ -216,7 +211,6 @@ struct ViewFridgeView: View {
                         )
                         .frame(width: 230, height: 358)
                     
-                    // Mini category hints inside fridge
                     VStack(spacing: 0) {
                         miniShelfRow([.veggies, .fruits, .dairy])
                         miniShelfLine()
@@ -228,7 +222,6 @@ struct ViewFridgeView: View {
                     .opacity(doorOpen ? 1 : 0)
                     .animation(.easeOut(duration: 0.4).delay(0.6), value: doorOpen)
                     
-                    // Door
                     ViewFridgeDoor(isOpen: doorOpen)
                         .zIndex(10)
                 }
@@ -236,18 +229,14 @@ struct ViewFridgeView: View {
                 .opacity(fridgeOpacity)
             }
             
-            // White flash
             Color.white
                 .ignoresSafeArea()
                 .opacity(whiteFlash)
                 .zIndex(15)
             
-            // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             // MARK: - Grid Layer
-            // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             if showGrid {
                 VStack(spacing: 0) {
-                    // Nav bar
                     HStack {
                         Button { dismiss() } label: {
                             HStack(spacing: 4) {
@@ -298,9 +287,7 @@ struct ViewFridgeView: View {
                 }
             }
             
-            // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             // MARK: - Ingredient Sheet
-            // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             if showIngredients, let category = selectedCategory {
                 Color.black.opacity(0.3)
                     .ignoresSafeArea()
@@ -321,7 +308,6 @@ struct ViewFridgeView: View {
                 .zIndex(30)
             }
         }
-        // MARK: - Animation Sequence
         .onAppear {
             withAnimation(.easeInOut(duration: 4.0).repeatForever(autoreverses: true)) {
                 animateBlobs = true
@@ -364,12 +350,14 @@ struct ViewFridgeView: View {
         }
     }
     
-    // Mini shelf items inside fridge
     private func miniShelfRow(_ categories: [FoodCategory]) -> some View {
         HStack(spacing: categories.count == 2 ? 20 : 10) {
             ForEach(categories, id: \.self) { cat in
                 VStack(spacing: 2) {
-                    Text(cat.emoji).font(.system(size: 22))
+                    Image(cat.iconName)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 22, height: 22)
                     Text(cat.rawValue.uppercased())
                         .font(.system(size: 7, weight: .bold, design: .rounded))
                         .foregroundColor(Color(red: 0.4, green: 0.4, blue: 0.4))
@@ -405,13 +393,16 @@ struct CategoryCard: View {
             }
         } label: {
             VStack(spacing: 8) {
-                Text(category.emoji).font(.system(size: 40))
+                Image(category.iconName)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: category.iconSize, height: category.iconSize)
                 Text(category.rawValue)
                     .font(.system(size: 16, weight: .bold, design: .rounded))
                     .foregroundColor(.primary)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 120)
+            .frame(height: 130)
             .background(
                 RoundedRectangle(cornerRadius: 18)
                     .fill(.ultraThinMaterial)
@@ -426,7 +417,7 @@ struct CategoryCard: View {
     }
 }
 
-// MARK: - Ingredient Sheet (fetches from backend)
+// MARK: - Ingredient Sheet
 struct IngredientSheetView: View {
     let category: FoodCategory
     @Binding var isPresented: Bool
@@ -441,18 +432,22 @@ struct IngredientSheetView: View {
             Spacer()
             
             VStack(spacing: 0) {
-                // Handle
                 RoundedRectangle(cornerRadius: 3)
                     .fill(Color(.systemGray4))
                     .frame(width: 40, height: 5)
                     .padding(.top, 12)
                     .padding(.bottom, 16)
                 
-                // Header
                 HStack {
-                    Text("\(category.emoji) \(category.rawValue)")
-                        .font(.system(size: 26, weight: .heavy, design: .rounded))
-                        .foregroundColor(Color(red: 0.2, green: 0.2, blue: 0.2))
+                    HStack(spacing: 10) {
+                        Image(category.iconName)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 28, height: 28)
+                        Text(category.rawValue)
+                            .font(.system(size: 26, weight: .heavy, design: .rounded))
+                            .foregroundColor(Color(red: 0.2, green: 0.2, blue: 0.2))
+                    }
                     
                     Spacer()
                     
@@ -477,7 +472,6 @@ struct IngredientSheetView: View {
                     .frame(height: 0.5)
                     .padding(.horizontal, 24)
                 
-                // Content
                 if isLoading {
                     Spacer()
                     ProgressView()
@@ -562,7 +556,6 @@ struct IngredientSheetView: View {
         }
     }
     
-    // MARK: - Fetch from backend
     private func loadItems() async {
         isLoading = true
         errorMessage = nil
@@ -578,10 +571,10 @@ struct IngredientSheetView: View {
     
     private func freshnessColor(item: FridgeItem) -> Color {
         guard let days = item.daysUntilExpiry else { return Color(.systemGray4) }
-        if days < 0 { return Color(red: 0.70, green: 0.20, blue: 0.20) }  // Expired
-        if days <= 1 { return Color(red: 0.94, green: 0.35, blue: 0.35) }  // Red
-        if days <= 3 { return Color(red: 0.95, green: 0.70, blue: 0.30) }  // Orange
-        return Color(red: 0.55, green: 0.78, blue: 0.45)                    // Green
+        if days < 0 { return Color(red: 0.70, green: 0.20, blue: 0.20) }
+        if days <= 1 { return Color(red: 0.94, green: 0.35, blue: 0.35) }
+        if days <= 3 { return Color(red: 0.95, green: 0.70, blue: 0.30) }
+        return Color(red: 0.55, green: 0.78, blue: 0.45)
     }
 }
 
@@ -661,7 +654,6 @@ struct DoorHandleView: View {
     }
 }
 
-// Corner radius extension
 extension View {
     func cornerRadius(_ radius: CGFloat, corners: UIRectCorner) -> some View {
         clipShape(RoundedCorner(radius: radius, corners: corners))
