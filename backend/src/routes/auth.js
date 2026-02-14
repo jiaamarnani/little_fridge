@@ -17,7 +17,7 @@ router.post('/signup', async (req, res) => {
     }
     
     //make user in Supabase Auth
-    const { data, error } = await supabase.auth.createAccount({
+    const { data, error } = await supabase.auth.signUp({
       email: email,
       password: password,
       options: {
