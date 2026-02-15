@@ -2,10 +2,10 @@
   "name": "little-fridge-api",
   "version": "1.0.0",
   "description": "Backend API for Little Fridge grocery app",
-  "main": "src/server.js",
-  "scripts": {
-    "dev": "nodemon src/server.js",
-    "start": "node src/server.js",
+"main": "server.js",
+ "scripts": {
+  "dev": "nodemon server.js",
+  "start": "node server.js",
     "build": "prisma generate",
     "postinstall": "prisma generate",
     "vercel-build": "prisma generate",
