@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct FridgeMenuView: View {
+struct ButtonsView: View {
     // MARK: - Navigation
     @State private var showAlerts = false
     @State private var showAddItems = false
@@ -236,8 +236,8 @@ struct MenuCard: View {
     }
 }
 
-struct FridgeMenuView_Previews: PreviewProvider {
+struct ButtonsView_Previews: PreviewProvider {
     static var previews: some View {
-        FridgeMenuView()
+        ButtonsView()
     }
 }

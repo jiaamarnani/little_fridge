@@ -15,6 +15,7 @@ struct SignInView: View {
     @State private var signInButtonVisible = false
     @State private var createAccountVisible = false
     @State private var isSignInPressed = false
+    @State private var isCreatePressed = false
     
     @FocusState private var focusedField: Field?
     
@@ -23,11 +24,6 @@ struct SignInView: View {
     }
     
     var body: some View {
-        
-        Text("TEST")
-            .font(.largeTitle)
-            .foregroundColor(.red)
-        
         ZStack {
             Color.white
                 .ignoresSafeArea()
@@ -186,7 +182,7 @@ struct SignInView: View {
                         // MARK: - BOTTOM 1/3: Actions
                         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                         VStack(spacing: 16) {
-                            // Sign In button
+                            // Sign In button - NOW NAVIGATES TO GROUP SELECTION
                             Button {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
                                     isSignInPressed = true
@@ -195,7 +191,7 @@ struct SignInView: View {
                                     withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
                                         isSignInPressed = false
                                     }
-                                    print("Sign in tapped - Username: \(username)")
+                                    showGroupSelection = true
                                 }
                             } label: {
                                 Text("Sign In")
@@ -229,9 +225,17 @@ struct SignInView: View {
                             }
                             .opacity(createAccountVisible ? 1 : 0)
                             
-                            // Create Account button
+                            // Create Account button - ALSO NAVIGATES TO GROUP SELECTION
                             Button {
-                                showGroupSelection = true
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
+                                    isCreatePressed = true
+                                }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
+                                        isCreatePressed = false
+                                    }
+                                    showGroupSelection = true
+                                }
                             } label: {
                                 Text("Create Account")
                                     .font(.system(size: 18, weight: .bold, design: .rounded))
@@ -244,6 +248,7 @@ struct SignInView: View {
                                         RoundedRectangle(cornerRadius: 14)
                                             .stroke(Color(red: 0.94, green: 0.44, blue: 0.44), lineWidth: 1.5)
                                     )
+                                    .scaleEffect(isCreatePressed ? 0.95 : 1.0)
                             }
                             .opacity(createAccountVisible ? 1 : 0)
                             
@@ -286,7 +291,6 @@ struct SignInView: View {
         }
         .fullScreenCover(isPresented: $showGroupSelection) {
             GroupSelectionView()
-                .transition(.move(edge: .trailing).combined(with: .opacity))
         }
     }
 }

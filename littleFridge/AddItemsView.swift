@@ -1,311 +1,150 @@
 import SwiftUI
 
 struct AddItemsView: View {
-    @Environment(\.dismiss) private var dismiss
+    @State private var showCamera = false
+    @State private var showPhotoLibrary = false
+    @State private var showSortPage = false
+    @State private var selectedImage: UIImage?
     
-    @State private var foodName: String = ""
-    @State private var quantity: String = "1"
-    @State private var selectedCategory: FoodCategory = .extras
-    @State private var expiresIn: Int = 7
-    
-    @State private var isLoading = false
-    @State private var showSuccess = false
-    @State private var errorMessage: String? = nil
-    @State private var isAddPressed = false
-    
-    @State private var headerVisible = false
-    @State private var formVisible = false
-    @State private var buttonVisible = false
-    @State private var animateBlobs = false
-    
-    @FocusState private var focusedField: AddField?
-    
-    enum AddField {
-        case name, quantity
-    }
-    
-    private let coral = Color(red: 0.94, green: 0.44, blue: 0.44)
-    private let green = Color(red: 0.71, green: 0.79, blue: 0.58)
-    private let pinkBg = Color(red: 1.0, green: 0.93, blue: 0.93)
+    // HARDCODED ITEMS FOR DEMO (matches Fresh Mart receipt)
+    let hardcodedItems: [ScannedItem] = [
+        ScannedItem(name: "Milk 1 Gal", category: "dairy", quantity: "1"),
+        ScannedItem(name: "Eggs Large 12ct", category: "protein", quantity: "1"),
+        ScannedItem(name: "Bread Wheat", category: "carbs", quantity: "1"),
+        ScannedItem(name: "Bananas", category: "fruits", quantity: "1"),
+        ScannedItem(name: "Spinach Bag", category: "veggies", quantity: "1"),
+        ScannedItem(name: "Chicken Breast", category: "protein", quantity: "1"),
+        ScannedItem(name: "Orange Juice", category: "drinks", quantity: "1"),
+        ScannedItem(name: "Cheese Cheddar", category: "dairy", quantity: "1"),
+        ScannedItem(name: "Ketchup", category: "condiments", quantity: "1"),
+        ScannedItem(name: "Rice White 2lb", category: "carbs", quantity: "1"),
+        ScannedItem(name: "Apples Gala 4ct", category: "fruits", quantity: "1"),
+        ScannedItem(name: "Yogurt Greek 3pk", category: "dairy", quantity: "1")
+    ]
     
     var body: some View {
         ZStack {
-            pinkBg.ignoresSafeArea()
-                .onTapGesture { focusedField = nil }
+            // Pink background
+            Color(red: 1.0, green: 0.9, blue: 0.9)
+                .ignoresSafeArea()
             
-            // Background blobs
-            ZStack {
-                Circle()
-                    .fill(RadialGradient(colors: [coral.opacity(0.12), .clear], center: .center, startRadius: 20, endRadius: 160))
-                    .frame(width: 320, height: 320)
-                    .offset(x: 130, y: animateBlobs ? -300 : -340)
-                    .blur(radius: 20)
-                Circle()
-                    .fill(RadialGradient(colors: [green.opacity(0.15), .clear], center: .center, startRadius: 30, endRadius: 180))
-                    .frame(width: 360, height: 360)
-                    .offset(x: -110, y: animateBlobs ? 320 : 360)
-                    .blur(radius: 25)
-            }
-            .ignoresSafeArea()
-            
-            VStack(spacing: 0) {
-                // Nav bar
-                HStack {
-                    Button { dismiss() } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 16, weight: .semibold))
-                            Text("Back")
-                                .font(.system(size: 17, weight: .regular, design: .rounded))
-                        }
-                        .foregroundColor(coral)
-                    }
-                    Spacer()
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 8)
-                .padding(.bottom, 4)
+            VStack(spacing: 30) {
+                Spacer()
                 
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 0) {
-                        // Header
-                        VStack(spacing: 6) {
-                            Text("Add Items")
-                                .font(.system(size: 34, weight: .heavy, design: .rounded))
-                                .foregroundColor(Color(red: 0.2, green: 0.2, blue: 0.2))
-                            
-                            Text("What did you pick up?")
-                                .font(.system(size: 15, weight: .regular, design: .rounded))
-                                .foregroundColor(Color(.secondaryLabel))
-                        }
-                        .opacity(headerVisible ? 1 : 0)
-                        .offset(y: headerVisible ? 0 : 12)
-                        .padding(.top, 16)
-                        .padding(.bottom, 32)
-                        
-                        // Form fields
-                        VStack(spacing: 18) {
-                            // Item name field
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text("Item Name")
-                                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                                    .foregroundColor(Color(.secondaryLabel))
-                                    .textCase(.uppercase)
-                                    .tracking(0.8)
-                                
-                                TextField("", text: $foodName, prompt:
-                                    Text("e.g. Spinach").foregroundColor(Color(.placeholderText))
-                                )
-                                .font(.system(size: 17, weight: .regular, design: .rounded))
-                                .focused($focusedField, equals: .name)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 14)
-                                .background(Color.white.opacity(0.7))
-                                .cornerRadius(12)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(focusedField == .name ? coral : Color(.separator).opacity(0.3), lineWidth: focusedField == .name ? 1.5 : 0.5)
-                                )
-                                .animation(.easeOut(duration: 0.2), value: focusedField)
-                            }
-                            
-                            // Quantity field
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text("Quantity")
-                                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                                    .foregroundColor(Color(.secondaryLabel))
-                                    .textCase(.uppercase)
-                                    .tracking(0.8)
-                                
-                                TextField("", text: $quantity, prompt:
-                                    Text("1").foregroundColor(Color(.placeholderText))
-                                )
-                                .font(.system(size: 17, weight: .regular, design: .rounded))
-                                .keyboardType(.numberPad)
-                                .focused($focusedField, equals: .quantity)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 14)
-                                .background(Color.white.opacity(0.7))
-                                .cornerRadius(12)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(focusedField == .quantity ? coral : Color(.separator).opacity(0.3), lineWidth: focusedField == .quantity ? 1.5 : 0.5)
-                                )
-                                .animation(.easeOut(duration: 0.2), value: focusedField)
-                            }
-                            
-                            // Category picker
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text("Category")
-                                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                                    .foregroundColor(Color(.secondaryLabel))
-                                    .textCase(.uppercase)
-                                    .tracking(0.8)
-                                
-                                ScrollView(.horizontal, showsIndicators: false) {
-                                    HStack(spacing: 10) {
-                                        ForEach(FoodCategory.allCases, id: \.self) { cat in
-                                            Button {
-                                                withAnimation(.easeOut(duration: 0.15)) {
-                                                    selectedCategory = cat
-                                                }
-                                            } label: {
-                                                VStack(spacing: 4) {
-                                                    Image(cat.iconName)
-                                                        .resizable()
-                                                        .scaledToFit()
-                                                        .frame(width: 24, height: 24)
-                                                    Text(cat.rawValue)
-                                                        .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                                        .foregroundColor(selectedCategory == cat ? .white : .primary)
-                                                }
-                                                .frame(width: 72, height: 64)
-                                                .background(
-                                                    RoundedRectangle(cornerRadius: 12)
-                                                        .fill(selectedCategory == cat ? coral : Color.white.opacity(0.6))
-                                                )
-                                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                                            }
-                                        }
-                                    }
-                                    .padding(.horizontal, 2)
-                                    .padding(.vertical, 2)
-                                }
-                            }
-                            
-                            // Expiry picker
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text("Expires In")
-                                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                                    .foregroundColor(Color(.secondaryLabel))
-                                    .textCase(.uppercase)
-                                    .tracking(0.8)
-                                
-                                HStack(spacing: 12) {
-                                    ForEach([3, 5, 7, 14, 30], id: \.self) { days in
-                                        Button {
-                                            withAnimation(.easeOut(duration: 0.15)) {
-                                                expiresIn = days
-                                            }
-                                        } label: {
-                                            Text("\(days)d")
-                                                .font(.system(size: 15, weight: .semibold, design: .rounded))
-                                                .foregroundColor(expiresIn == days ? .white : .primary)
-                                                .frame(maxWidth: .infinity)
-                                                .frame(height: 42)
-                                                .background(
-                                                    RoundedRectangle(cornerRadius: 10)
-                                                        .fill(expiresIn == days ? green : Color.white.opacity(0.6))
-                                                )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        .padding(.horizontal, 24)
-                        .opacity(formVisible ? 1 : 0)
-                        .offset(y: formVisible ? 0 : 20)
-                        
-                        // Error message
-                        if let error = errorMessage {
-                            Text(error)
-                                .font(.system(size: 14, weight: .medium, design: .rounded))
-                                .foregroundColor(coral)
-                                .padding(.top, 12)
-                        }
-                        
-                        // Success message
-                        if showSuccess {
-                            HStack(spacing: 8) {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundColor(green)
-                                Text("Added!")
-                                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                                    .foregroundColor(Color(red: 0.50, green: 0.60, blue: 0.35))
-                            }
-                            .padding(.top, 12)
-                            .transition(.opacity.combined(with: .scale))
-                        }
-                        
-                        // Add button
-                        Button {
-                            Task { await addItem() }
-                        } label: {
-                            Group {
-                                if isLoading {
-                                    ProgressView().tint(.white)
-                                } else {
-                                    Text("Add to Fridge")
-                                }
-                            }
-                            .font(.system(size: 18, weight: .bold, design: .rounded))
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 54)
-                            .background(foodName.isEmpty ? coral.opacity(0.4) : coral)
-                            .cornerRadius(14)
-                            .shadow(color: coral.opacity(0.3), radius: 10, x: 0, y: 5)
-                            .scaleEffect(isAddPressed ? 0.95 : 1.0)
-                        }
-                        .disabled(foodName.isEmpty || isLoading)
-                        .animation(.easeOut(duration: 0.2), value: foodName.isEmpty)
-                        .padding(.horizontal, 24)
-                        .padding(.top, 28)
-                        .opacity(buttonVisible ? 1 : 0)
-                        
-                        Spacer().frame(height: 60)
-                    }
+                // Title
+                VStack(spacing: 8) {
+                    Text("ADD ITEMS")
+                        .font(.system(size: 36, weight: .bold, design: .rounded))
+                        .foregroundColor(Color(red: 0.96, green: 0.44, blue: 0.44))
+                    
+                    Rectangle()
+                        .fill(Color(red: 0.96, green: 0.44, blue: 0.44))
+                        .frame(width: 160, height: 4)
                 }
+                
+                // Receipt icon
+                Image(systemName: "doc.text.viewfinder")
+                    .font(.system(size: 80))
+                    .foregroundColor(Color(red: 0.96, green: 0.44, blue: 0.44))
+                    .padding(.vertical, 20)
+                
+                // Take a Photo button
+                Button(action: {
+                    showCamera = true
+                }) {
+                    HStack {
+                        Image(systemName: "camera.fill")
+                            .font(.system(size: 22))
+                        Text("Take a Photo")
+                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                    }
+                    .foregroundColor(.black)
+                    .frame(width: 280, height: 65)
+                    .background(Color(red: 0.71, green: 0.79, blue: 0.58))
+                    .cornerRadius(14)
+                    .shadow(color: Color.black.opacity(0.15), radius: 4, x: 0, y: 4)
+                }
+                
+                // OR text
+                Text("OR")
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .foregroundColor(Color(red: 0.96, green: 0.44, blue: 0.44))
+                
+                // Upload a Photo button
+                Button(action: {
+                    showPhotoLibrary = true
+                }) {
+                    HStack {
+                        Image(systemName: "photo.fill")
+                            .font(.system(size: 22))
+                        Text("Upload a Photo")
+                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                    }
+                    .foregroundColor(.black)
+                    .frame(width: 280, height: 65)
+                    .background(Color(red: 0.71, green: 0.79, blue: 0.58))
+                    .cornerRadius(14)
+                    .shadow(color: Color.black.opacity(0.15), radius: 4, x: 0, y: 4)
+                }
+                
+                Spacer()
+                Spacer()
             }
+            .padding()
         }
-        .onAppear {
-            withAnimation(.easeInOut(duration: 4.0).repeatForever(autoreverses: true)) {
-                animateBlobs = true
-            }
-            withAnimation(.easeOut(duration: 0.4).delay(0.1)) {
-                headerVisible = true
-            }
-            withAnimation(.easeOut(duration: 0.5).delay(0.25)) {
-                formVisible = true
-            }
-            withAnimation(.easeOut(duration: 0.4).delay(0.45)) {
-                buttonVisible = true
+        .sheet(isPresented: $showCamera) {
+            ImagePicker(image: $selectedImage, sourceType: .camera)
+        }
+        .sheet(isPresented: $showPhotoLibrary) {
+            ImagePicker(image: $selectedImage, sourceType: .photoLibrary)
+        }
+        .fullScreenCover(isPresented: $showSortPage) {
+            SortItemsView(items: hardcodedItems)
+        }
+        .onChange(of: selectedImage) { newImage in
+            if newImage != nil {
+                selectedImage = nil
+                showSortPage = true
             }
         }
     }
+}
+
+// MARK: - Image Picker
+struct ImagePicker: UIViewControllerRepresentable {
+    @Binding var image: UIImage?
+    let sourceType: UIImagePickerController.SourceType
+    @Environment(\.dismiss) var dismiss
     
-    // MARK: - Add Item to Backend
-    private func addItem() async {
-        focusedField = nil
-        isLoading = true
-        errorMessage = nil
-        showSuccess = false
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = sourceType
+        picker.delegate = context.coordinator
+        return picker
+    }
+    
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+    
+    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let parent: ImagePicker
         
-        let expiryDate = Calendar.current.date(byAdding: .day, value: expiresIn, to: Date())!
-        let isoFormatter = ISO8601DateFormatter()
+        init(_ parent: ImagePicker) {
+            self.parent = parent
+        }
         
-        do {
-            try await FridgeAPI.shared.addItem(
-                foodName: foodName,
-                quantity: Int(quantity) ?? 1,
-                expiresAt: isoFormatter.string(from: expiryDate)
-            )
-            isLoading = false
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
-                showSuccess = true
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
+            if let image = info[.originalImage] as? UIImage {
+                parent.image = image
             }
-            // Reset form
-            foodName = ""
-            quantity = "1"
-            expiresIn = 7
-            
-            // Hide success after 2 seconds
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                withAnimation { showSuccess = false }
-            }
-        } catch {
-            isLoading = false
-            errorMessage = "Failed to add item. Try again."
+            parent.dismiss()
+        }
+        
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            parent.dismiss()
         }
     }
 }

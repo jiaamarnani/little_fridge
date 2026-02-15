@@ -23,120 +23,11 @@ enum FoodCategory: String, CaseIterable {
         case .extras: return "icon-extras"
         }
     }
-    
-    var iconSize: CGFloat {
-        switch self {
-        case .veggies: return 75
-        case .fruits: return 75
-        case .dairy: return 75
-        case .carbs: return 75
-        case .condiments: return 75
-        case .protein: return 75
-        case .drinks: return 75
-        case .extras: return 75
-        }
-    }
-}
-
-// MARK: - Models (matches Prisma/Supabase schema)
-struct FoodDetail: Codable {
-    let foodName: String
-    let foodCategory: String
-    let defaultExpiryDays: Int?
-    
-    enum CodingKeys: String, CodingKey {
-        case foodName = "food_name"
-        case foodCategory = "food_category"
-        case defaultExpiryDays = "default_expiry_days"
-    }
-}
-
-struct FridgeItem: Identifiable, Codable {
-    let id: String
-    let fridgeId: String
-    let foodName: String
-    let quantity: Int
-    let addedByUserId: String?
-    let addedAt: String
-    let expiresAt: String?
-    let foods: FoodDetail?
-    
-    enum CodingKeys: String, CodingKey {
-        case id
-        case fridgeId = "fridge_id"
-        case foodName = "food_name"
-        case quantity
-        case addedByUserId = "added_by_user_id"
-        case addedAt = "added_at"
-        case expiresAt = "expires_at"
-        case foods
-    }
-    
-    var expiresInText: String {
-        guard let expiresAt = expiresAt,
-              let date = ISO8601DateFormatter().date(from: expiresAt) else {
-            return "No expiry"
-        }
-        let days = Calendar.current.dateComponents([.day], from: Date(), to: date).day ?? 0
-        if days < 0 { return "Expired" }
-        if days == 0 { return "Today" }
-        if days == 1 { return "1 day" }
-        return "\(days) days"
-    }
-    
-    var daysUntilExpiry: Int? {
-        guard let expiresAt = expiresAt,
-              let date = ISO8601DateFormatter().date(from: expiresAt) else { return nil }
-        return Calendar.current.dateComponents([.day], from: Date(), to: date).day
-    }
-}
-
-// MARK: - API Service
-class FridgeAPI {
-    static let shared = FridgeAPI()
-    
-    private let baseURL = "https://your-backend-url.com/api"
-    var currentFridgeId: String = ""
-    
-    func fetchItems(for category: FoodCategory) async throws -> [FridgeItem] {
-        let categoryParam = category.rawValue.lowercased()
-        let url = URL(string: "\(baseURL)/fridge/\(currentFridgeId)/category/\(categoryParam)")!
-        let (data, _) = try await URLSession.shared.data(from: url)
-        return try JSONDecoder().decode([FridgeItem].self, from: data)
-    }
-    
-    func fetchAllItems() async throws -> [FridgeItem] {
-        let url = URL(string: "\(baseURL)/fridge/\(currentFridgeId)/items")!
-        let (data, _) = try await URLSession.shared.data(from: url)
-        return try JSONDecoder().decode([FridgeItem].self, from: data)
-    }
-    
-    func deleteItem(id: String) async throws {
-        let url = URL(string: "\(baseURL)/fridge/items/\(id)")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "DELETE"
-        let (_, _) = try await URLSession.shared.data(for: request)
-    }
-    
-    func addItem(foodName: String, quantity: Int, expiresAt: String) async throws {
-        let url = URL(string: "\(baseURL)/fridge/\(currentFridgeId)/items")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        let body: [String: Any] = [
-            "foodName": foodName,
-            "quantity": quantity,
-            "expiresAt": expiresAt
-        ]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (_, _) = try await URLSession.shared.data(for: request)
-    }
 }
 
 // MARK: - Main View
 struct ViewFridgeView: View {
-    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var fridgeStore = FridgeStore.shared
     
     @State private var doorOpen = false
     @State private var fridgeScale: CGFloat = 1.0
@@ -151,6 +42,7 @@ struct ViewFridgeView: View {
     
     @State private var selectedCategory: FoodCategory? = nil
     @State private var showIngredients = false
+    @State private var showButtonsView = false
     
     private let coral = Color(red: 0.94, green: 0.44, blue: 0.44)
     private let green = Color(red: 0.71, green: 0.79, blue: 0.58)
@@ -165,6 +57,7 @@ struct ViewFridgeView: View {
         ZStack {
             pinkBg.ignoresSafeArea()
             
+            // Animated background blobs
             ZStack {
                 Circle()
                     .fill(RadialGradient(colors: [coral.opacity(0.12), .clear], center: .center, startRadius: 20, endRadius: 160))
@@ -238,7 +131,7 @@ struct ViewFridgeView: View {
             if showGrid {
                 VStack(spacing: 0) {
                     HStack {
-                        Button { dismiss() } label: {
+                        Button { showButtonsView = true } label: {
                             HStack(spacing: 4) {
                                 Image(systemName: "chevron.left")
                                     .font(.system(size: 16, weight: .semibold))
@@ -302,48 +195,56 @@ struct ViewFridgeView: View {
                 IngredientSheetView(
                     category: category,
                     isPresented: $showIngredients,
-                    coral: coral
+                    coral: coral,
+                    green: green
                 )
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .zIndex(30)
             }
         }
         .onAppear {
-            withAnimation(.easeInOut(duration: 4.0).repeatForever(autoreverses: true)) {
-                animateBlobs = true
+            startAnimations()
+        }
+        .fullScreenCover(isPresented: $showButtonsView) {
+            ButtonsView()
+        }
+    }
+    
+    private func startAnimations() {
+        withAnimation(.easeInOut(duration: 4.0).repeatForever(autoreverses: true)) {
+            animateBlobs = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            withAnimation(.spring(response: 0.8, dampingFraction: 0.7)) {
+                doorOpen = true
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                withAnimation(.spring(response: 0.8, dampingFraction: 0.7)) {
-                    doorOpen = true
-                }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+            withAnimation(.easeIn(duration: 0.4)) {
+                fridgeScale = 4.0
+                fridgeOpacity = 0.0
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
-                withAnimation(.easeIn(duration: 0.4)) {
-                    fridgeScale = 4.0
-                    fridgeOpacity = 0.0
-                }
-                withAnimation(.easeIn(duration: 0.25).delay(0.15)) {
-                    whiteFlash = 1.0
-                }
+            withAnimation(.easeIn(duration: 0.25).delay(0.15)) {
+                whiteFlash = 1.0
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.3) {
-                showFridge = false
-                showGrid = true
-                withAnimation(.easeOut(duration: 0.3)) {
-                    whiteFlash = 0.0
-                }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.3) {
+            showFridge = false
+            showGrid = true
+            withAnimation(.easeOut(duration: 0.3)) {
+                whiteFlash = 0.0
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
-                withAnimation(.easeOut(duration: 0.3)) {
-                    headerVisible = true
-                }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+            withAnimation(.easeOut(duration: 0.3)) {
+                headerVisible = true
             }
-            for i in 0..<8 {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5 + Double(i) * 0.06) {
-                    withAnimation(.spring(response: 0.45, dampingFraction: 0.75)) {
-                        if gridVisible.indices.contains(i) {
-                            gridVisible[i] = true
-                        }
+        }
+        for i in 0..<8 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5 + Double(i) * 0.06) {
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.75)) {
+                    if gridVisible.indices.contains(i) {
+                        gridVisible[i] = true
                     }
                 }
             }
@@ -396,7 +297,7 @@ struct CategoryCard: View {
                 Image(category.iconName)
                     .resizable()
                     .scaledToFit()
-                    .frame(width: category.iconSize, height: category.iconSize)
+                    .frame(width: 75, height: 75)
                 Text(category.rawValue)
                     .font(.system(size: 16, weight: .bold, design: .rounded))
                     .foregroundColor(.primary)
@@ -422,10 +323,13 @@ struct IngredientSheetView: View {
     let category: FoodCategory
     @Binding var isPresented: Bool
     let coral: Color
+    let green: Color
     
-    @State private var items: [FridgeItem] = []
-    @State private var isLoading = true
-    @State private var errorMessage: String? = nil
+    @ObservedObject var fridgeStore = FridgeStore.shared
+    
+    var items: [Ingredient] {
+        fridgeStore.getIngredients(for: category.rawValue.lowercased())
+    }
     
     var body: some View {
         VStack {
@@ -472,25 +376,7 @@ struct IngredientSheetView: View {
                     .frame(height: 0.5)
                     .padding(.horizontal, 24)
                 
-                if isLoading {
-                    Spacer()
-                    ProgressView()
-                        .tint(coral)
-                    Spacer()
-                } else if let error = errorMessage {
-                    Spacer()
-                    VStack(spacing: 8) {
-                        Image(systemName: "wifi.slash")
-                            .font(.system(size: 28))
-                            .foregroundColor(Color(.tertiaryLabel))
-                        Text(error)
-                            .font(.system(size: 15, weight: .medium, design: .rounded))
-                            .foregroundColor(Color(.secondaryLabel))
-                            .multilineTextAlignment(.center)
-                    }
-                    .padding(.horizontal, 40)
-                    Spacer()
-                } else if items.isEmpty {
+                if items.isEmpty {
                     Spacer()
                     VStack(spacing: 8) {
                         Text("Nothing here yet")
@@ -507,23 +393,38 @@ struct IngredientSheetView: View {
                             ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                                 HStack(spacing: 14) {
                                     Circle()
-                                        .fill(freshnessColor(item: item))
+                                        .fill(item.isShared ? green : Color(.systemGray4))
                                         .frame(width: 10, height: 10)
                                     
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text(item.foodName)
-                                            .font(.system(size: 17, weight: .semibold, design: .rounded))
-                                            .foregroundColor(.primary)
-                                        Text(item.expiresInText)
-                                            .font(.system(size: 13, weight: .regular, design: .rounded))
-                                            .foregroundColor(Color(.secondaryLabel))
+                                        Text(item.name)
+                                            .font(.system(size: 17, weight: item.isShared ? .bold : .regular, design: .rounded))
+                                            .foregroundColor(item.isShared ? .primary : Color(.tertiaryLabel))
+                                        
+                                        if item.isShared {
+                                            Text("Shared with group")
+                                                .font(.system(size: 13, weight: .regular, design: .rounded))
+                                                .foregroundColor(green)
+                                        }
                                     }
                                     
                                     Spacer()
                                     
-                                    Text("×\(item.quantity)")
-                                        .font(.system(size: 15, weight: .medium, design: .rounded))
-                                        .foregroundColor(Color(.tertiaryLabel))
+                                    if let qty = item.quantity {
+                                        Text("×\(qty)")
+                                            .font(.system(size: 15, weight: .medium, design: .rounded))
+                                            .foregroundColor(item.isShared ? Color(.secondaryLabel) : Color(.quaternaryLabel))
+                                    }
+                                    
+                                    if item.isShared {
+                                        Text("SHARED")
+                                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                                            .foregroundColor(.white)
+                                            .padding(.horizontal, 8)
+                                            .padding(.vertical, 4)
+                                            .background(green)
+                                            .cornerRadius(8)
+                                    }
                                 }
                                 .padding(.horizontal, 24)
                                 .padding(.vertical, 14)
@@ -551,30 +452,6 @@ struct IngredientSheetView: View {
             )
         }
         .ignoresSafeArea()
-        .task {
-            await loadItems()
-        }
-    }
-    
-    private func loadItems() async {
-        isLoading = true
-        errorMessage = nil
-        
-        do {
-            items = try await FridgeAPI.shared.fetchItems(for: category)
-            isLoading = false
-        } catch {
-            errorMessage = "Couldn't load items.\nCheck your connection."
-            isLoading = false
-        }
-    }
-    
-    private func freshnessColor(item: FridgeItem) -> Color {
-        guard let days = item.daysUntilExpiry else { return Color(.systemGray4) }
-        if days < 0 { return Color(red: 0.70, green: 0.20, blue: 0.20) }
-        if days <= 1 { return Color(red: 0.94, green: 0.35, blue: 0.35) }
-        if days <= 3 { return Color(red: 0.95, green: 0.70, blue: 0.30) }
-        return Color(red: 0.55, green: 0.78, blue: 0.45)
     }
 }
 
@@ -651,20 +528,6 @@ struct DoorHandleView: View {
                 .frame(width: 8, height: 40)
                 .offset(x: -12)
         }
-    }
-}
-
-extension View {
-    func cornerRadius(_ radius: CGFloat, corners: UIRectCorner) -> some View {
-        clipShape(RoundedCorner(radius: radius, corners: corners))
-    }
-}
-
-struct RoundedCorner: Shape {
-    var radius: CGFloat = .infinity
-    var corners: UIRectCorner = .allCorners
-    func path(in rect: CGRect) -> Path {
-        Path(UIBezierPath(roundedRect: rect, byRoundingCorners: corners, cornerRadii: CGSize(width: radius, height: radius)).cgPath)
     }
 }
 
