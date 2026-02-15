@@ -2,10 +2,10 @@
   "name": "little-fridge-api",
   "version": "1.0.0",
   "description": "Backend API for Little Fridge grocery app",
-"main": "server.js",
- "scripts": {
-  "dev": "nodemon server.js",
-  "start": "node server.js",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "nodemon src/server.js",
+    "start": "node src/server.js",
     "build": "prisma generate",
     "postinstall": "prisma generate",
     "vercel-build": "prisma generate",
@@ -21,14 +21,12 @@
   "author": "Vanessa Fobid",
   "license": "MIT",
   "dependencies": {
-    "@prisma/client": "^6.19.0",
     "@supabase/supabase-js": "^2.39.0",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2"
   },
   "devDependencies": {
-    "nodemon": "^3.1.11",
-    "prisma": "^6.19.0"
+    "nodemon": "^3.1.11"
   }
 }
