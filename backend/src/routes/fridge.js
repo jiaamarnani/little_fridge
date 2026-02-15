@@ -351,4 +351,18 @@ router.delete('/items/:itemId', requireAuth, async (req, res) => {
   }
 });
 
+// Backend route for batch insert
+router.post('/:fridgeId/items/batch', requireAuth, async (req, res) => {
+  const { items } = req.body;  // Array of{foodName, quantity}
+  
+  await prisma.FridgeItems.createMany({
+    data: items.map(item => ({
+      fridge_id: fridgeId,
+      food_name: item.foodName,
+      quantity: item.quantity,
+      added_by_user_id: userId
+    }))
+  });
+});
+
 module.exports = router;
